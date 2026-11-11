@@ -521,7 +521,7 @@
 
         <!-- Viewfinder Overlay Controls -->
         <div class="vf-top-bar">
-          <div class="page-pill" id="vfPagePill">📄 Next: Page 1</div>
+          <div class="page-pill" id="vfPagePill" onclick="adjustPageNumber()" style="cursor:pointer;" title="Tap to change page number">📄 Next: Page 1 ✏️</div>
           <div style="display:flex; align-items:center; gap:8px;">
             <div class="sharpness-pill" id="sharpnessPill">
               <span id="sharpDot" style="width:8px; height:8px; border-radius:50%; background:#94a3b8;"></span>
@@ -1181,7 +1181,7 @@
 
     async function uploadImageBlob(blob, score, force) {
       try {
-        const url = `/api/upload?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}&threshold=${currentThreshold}&client_score=${score}&force=${force}`;
+        const url = `/api/upload?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}&threshold=${currentThreshold}&client_score=${score}&force=${force}&client_page=${nextExpectedPage}`;
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'image/jpeg' },
@@ -1192,10 +1192,11 @@
         if (data.success) {
           playChime(true);
           vibrate(70);
-          showToast('success', `✅ Page ${data.page_number} Stored on Laptop!`, false);
+          showToast('success', `✅ Page ${data.page_number} Saved & Synced!`, false);
           nextExpectedPage = data.page_number + 1;
+          localStorage.setItem(`scanner_page_${currentSubject}_${currentBook}`, nextExpectedPage);
           const pagePill = document.getElementById('vfPagePill');
-          if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage}`;
+          if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage} ✏️`;
           loadBookPages();
         } else {
           playChime(false);
@@ -1256,17 +1257,39 @@
       img.src = URL.createObjectURL(file);
     }
 
+    function adjustPageNumber() {
+      const input = prompt("Enter next page number to scan:", nextExpectedPage);
+      if (input !== null) {
+        const parsed = parseInt(input.trim(), 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          nextExpectedPage = parsed;
+          localStorage.setItem(`scanner_page_${currentSubject}_${currentBook}`, nextExpectedPage);
+          const pagePill = document.getElementById('vfPagePill');
+          if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage} ✏️`;
+          showToast('success', `Next page set to ${nextExpectedPage}`, false);
+        }
+      }
+    }
+
     // Load book pages list
     async function loadBookPages() {
       try {
         const res = await fetch(`/api/pages?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}`);
         const data = await res.json();
         const pages = data.pages || [];
-        nextExpectedPage = pages.length + 1;
+        const savedPage = parseInt(localStorage.getItem(`scanner_page_${currentSubject}_${currentBook}`) || '0', 10);
+        if (pages.length > 0) {
+          nextExpectedPage = Math.max(pages.length + 1, savedPage);
+        } else if (savedPage > 0) {
+          nextExpectedPage = savedPage;
+        } else {
+          nextExpectedPage = 1;
+        }
+        localStorage.setItem(`scanner_page_${currentSubject}_${currentBook}`, nextExpectedPage);
         const pagePill = document.getElementById('vfPagePill');
-        if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage}`;
+        if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage} ✏️`;
 
-        document.getElementById('activePagesCount').textContent = `${pages.length} pages scanned`;
+        document.getElementById('activePagesCount').textContent = `${Math.max(pages.length, nextExpectedPage - 1)} pages in session`;
         document.getElementById('stripCount').textContent = pages.length;
 
         const strip = document.getElementById('galleryStrip');

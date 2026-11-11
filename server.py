@@ -399,6 +399,15 @@ class ScannerHandler(BaseHTTPRequestHandler):
                 except ValueError:
                     client_score = None
 
+            # Client can pass expected page number to seamlessly resume across sessions
+            client_page_str = params.get("client_page", [None])[0]
+            client_page = None
+            if client_page_str:
+                try:
+                    client_page = int(client_page_str)
+                except ValueError:
+                    client_page = None
+
             target_dir, safe_sub, safe_bk = resolve_book_dir(subj, book)
 
             try:
@@ -450,6 +459,10 @@ class ScannerHandler(BaseHTTPRequestHandler):
                         nums = [int(f.stem.replace("page_", "")) for f in existing if f.stem.replace("page_", "").isdigit()]
                         if nums:
                             next_num = max(nums) + 1
+
+                # If client remembers a higher page number from previous session
+                if client_page and client_page > next_num:
+                    next_num = client_page
 
                 filename = f"page_{next_num:03d}.jpg"
                 save_path = target_dir / filename

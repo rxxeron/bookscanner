@@ -1,24 +1,12 @@
 /**
  * ==============================================================================
- * Prep404 BookScanner -> Google Drive Webhook Receiver
+ * Prep404 BookScanner -> Google Drive Webhook Receiver (Read + Write)
  * ==============================================================================
- * How to deploy this in 60 seconds (100% Free, No Credit Card, No GCP Project):
- *
- * 1. Open https://script.google.com in your browser (logged into your Google account).
- * 2. Click "+ New Project".
- * 3. Delete everything in the editor and PASTE this entire file.
- * 4. (Optional) If you want all scans in a specific folder, paste its folder ID below
- *    at ROOT_FOLDER_ID. Otherwise, it automatically creates a "BookScans" folder.
- * 5. Click "Deploy" (top right button) -> "New deployment".
- * 6. Click the gear icon next to "Select type" -> choose "Web app".
- * 7. Set:
- *    - Description: Book Scanner Drive Receiver
- *    - Execute as: Me (your email)
- *    - Who has access: Anyone (IMPORTANT: allows the scanner to upload files)
- * 8. Click "Deploy" -> authorize permissions with your Google account.
- * 9. Copy the generated "Web app URL" (looks like: https://script.google.com/macros/s/.../exec).
- * 10. Set that URL as an environment variable GDRIVE_WEBHOOK_URL on your cloud host
- *     (Render / Railway) or paste it in config.json!
+ * To update an existing deployment WITHOUT changing its URL:
+ * 1. Open your project at https://script.google.com
+ * 2. Replace everything with this updated code and Save (Ctrl+S).
+ * 3. Click "Deploy" (top right) -> "Manage deployments".
+ * 4. Click the Edit (pencil) icon -> Version: "New version" -> Click "Deploy".
  * ==============================================================================
  */
 
@@ -26,13 +14,26 @@
 // or paste a specific Google Drive Folder ID from its URL.
 var ROOT_FOLDER_ID = "";
 
+function resolveParentFolder(customFolderId) {
+  var targetFolderId = (customFolderId || ROOT_FOLDER_ID || "").trim();
+  if (targetFolderId && targetFolderId.length > 5) {
+    try {
+      return DriveApp.getFolderById(targetFolderId);
+    } catch (err) {}
+  }
+  var rootIter = DriveApp.getRootFolder().getFoldersByName("BookScans");
+  return rootIter.hasNext() ? rootIter.next() : DriveApp.getRootFolder().createFolder("BookScans");
+}
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
-      return ContentService.createTextOutput(JSON.stringify({
-        success: false,
-        error: "Missing post body"
-      })).setMimeType(ContentService.MimeType.JSON);
+      return jsonOut({ success: false, error: "Missing post body" });
     }
 
     var data = JSON.parse(e.postData.contents);
@@ -43,66 +44,151 @@ function doPost(e) {
     var mimeType = data.mime_type || "image/jpeg";
 
     if (!base64Data) {
-      return ContentService.createTextOutput(JSON.stringify({
-        success: false,
-        error: "No image payload provided"
-      })).setMimeType(ContentService.MimeType.JSON);
+      return jsonOut({ success: false, error: "No image payload provided" });
     }
 
-    // 1. Resolve Root Destination Folder (accepts folder_id from scanner, or ROOT_FOLDER_ID, or defaults to BookScans)
-    var targetFolderId = (data.folder_id || ROOT_FOLDER_ID || "").trim();
-    var parentFolder;
-    if (targetFolderId && targetFolderId.length > 5) {
-      try {
-        parentFolder = DriveApp.getFolderById(targetFolderId);
-      } catch (err) {
-        var rootIter = DriveApp.getRootFolder().getFoldersByName("BookScans");
-        parentFolder = rootIter.hasNext() ? rootIter.next() : DriveApp.getRootFolder().createFolder("BookScans");
-      }
-    } else {
-      var rootIter = DriveApp.getRootFolder().getFoldersByName("BookScans");
-      parentFolder = rootIter.hasNext() ? rootIter.next() : DriveApp.getRootFolder().createFolder("BookScans");
-    }
+    var parentFolder = resolveParentFolder(data.folder_id);
 
-    // 2. Resolve Subject Folder (e.g. "Physics 1st Paper")
+    // Resolve Subject Folder
     var subIter = parentFolder.getFoldersByName(subject);
     var subFolder = subIter.hasNext() ? subIter.next() : parentFolder.createFolder(subject);
 
-    // 3. Resolve Book / Chapter Folder (e.g. "Chapter 4")
+    // Resolve Book / Chapter Folder
     var bookIter = subFolder.getFoldersByName(book);
     var bookFolder = bookIter.hasNext() ? bookIter.next() : subFolder.createFolder(book);
 
-    // 4. Clean up any existing file with the same name (so retakes overwrite cleanly)
+    // Overwrite existing file with the same name cleanly
     var existingFiles = bookFolder.getFilesByName(filename);
     while (existingFiles.hasNext()) {
       existingFiles.next().setTrashed(true);
     }
 
-    // 5. Decode base64 and write the file
     var decoded = Utilities.base64Decode(base64Data);
     var blob = Utilities.newBlob(decoded, mimeType, filename);
     var file = bookFolder.createFile(blob);
 
-    return ContentService.createTextOutput(JSON.stringify({
+    return jsonOut({
       success: true,
       file_id: file.getId(),
       file_url: file.getUrl(),
       filename: filename,
       path: "BookScans/" + subject + "/" + book + "/" + filename
-    })).setMimeType(ContentService.MimeType.JSON);
-
+    });
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      success: false,
-      error: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    return jsonOut({ success: false, error: error.toString() });
   }
 }
 
-// Simple test ping
-function doGet() {
-  return ContentService.createTextOutput(JSON.stringify({
-    status: "ok",
-    service: "Prep404 BookScanner Google Drive Receiver"
-  })).setMimeType(ContentService.MimeType.JSON);
+function doGet(e) {
+  try {
+    var params = (e && e.parameter) ? e.parameter : {};
+    var action = params.action || "";
+
+    // 1. List Subject -> Book folder tree from Google Drive
+    if (action === "tree") {
+      var parentFolder = resolveParentFolder(params.folder_id);
+      var tree = {};
+      var subFolders = parentFolder.getFolders();
+
+      while (subFolders.hasNext()) {
+        var sub = subFolders.next();
+        var subName = sub.getName();
+        var books = [];
+        var bkFolders = sub.getFolders();
+
+        while (bkFolders.hasNext()) {
+          var bk = bkFolders.next();
+          var files = bk.getFiles();
+          var count = 0;
+          var maxPage = 0;
+          while (files.hasNext()) {
+            var f = files.next();
+            var m = f.getName().match(/^page_(\d+)\.jpg$/i);
+            if (m) {
+              count++;
+              var pNum = parseInt(m[1], 10);
+              if (pNum > maxPage) maxPage = pNum;
+            }
+          }
+          books.push({
+            name: bk.getName(),
+            pages: count,
+            next_page: maxPage + 1
+          });
+        }
+
+        // Sort books alphabetically
+        books.sort(function(a, b) { return a.name.localeCompare(b.name); });
+        tree[subName] = books;
+      }
+
+      return jsonOut({ success: true, tree: tree });
+    }
+
+    // 2. List scanned pages inside a specific Subject / Book
+    if (action === "pages") {
+      var subject = (params.subject || "General").trim();
+      var book = (params.book || "Book_Scans").trim();
+      var parentFolder = resolveParentFolder(params.folder_id);
+
+      var subIter = parentFolder.getFoldersByName(subject);
+      if (!subIter.hasNext()) {
+        return jsonOut({ success: true, subject: subject, book: book, pages: [], next_page: 1, total: 0 });
+      }
+      var subFolder = subIter.next();
+
+      var bookIter = subFolder.getFoldersByName(book);
+      if (!bookIter.hasNext()) {
+        return jsonOut({ success: true, subject: subject, book: book, pages: [], next_page: 1, total: 0 });
+      }
+      var bookFolder = bookIter.next();
+
+      var pages = [];
+      var maxPage = 0;
+      var files = bookFolder.getFiles();
+      while (files.hasNext()) {
+        var f = files.next();
+        var m = f.getName().match(/^page_(\d+)\.jpg$/i);
+        if (m) {
+          var pNum = parseInt(m[1], 10);
+          if (pNum > maxPage) maxPage = pNum;
+          pages.push({
+            page_number: pNum,
+            filename: f.getName(),
+            file_id: f.getId()
+          });
+        }
+      }
+
+      pages.sort(function(a, b) { return a.page_number - b.page_number; });
+
+      return jsonOut({
+        success: true,
+        subject: subject,
+        book: book,
+        pages: pages,
+        next_page: maxPage + 1,
+        total: pages.length
+      });
+    }
+
+    // 3. Return base64 image for thumbnail preview proxy
+    if (action === "image_b64" && params.id) {
+      var file = DriveApp.getFileById(params.id);
+      var blob = file.getBlob();
+      return jsonOut({
+        success: true,
+        mime_type: blob.getContentType(),
+        base64: Utilities.base64Encode(blob.getBytes())
+      });
+    }
+
+    // Default ping
+    return jsonOut({
+      status: "ok",
+      service: "Prep404 BookScanner Google Drive Receiver"
+    });
+  } catch (error) {
+    return jsonOut({ success: false, error: error.toString() });
+  }
 }

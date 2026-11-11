@@ -1,7 +1,27 @@
+const DEFAULT_WEBHOOK = "https://script.google.com/macros/s/AKfycby8Klzd5e0vimyKh61uC3URsGvgIkQR3hukjIId_WosyGuoqWj4cW4bB3VPVeIG6iIb/exec";
+
+function getConfig(env) {
+  return {
+    webhookUrl: (env && env.GDRIVE_WEBHOOK_URL) || DEFAULT_WEBHOOK,
+    folderId: (env && env.GDRIVE_FOLDER_ID) || ""
+  };
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*"
+    }
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    const { webhookUrl, folderId } = getConfig(env);
 
     // Handle CORS preflight
     if (request.method === "OPTIONS") {
@@ -25,32 +45,83 @@ export default {
       });
     }
 
-    // API: Folders
+    // API: Folders (read live folder tree from Google Drive via Apps Script)
     if (path === "/api/folders") {
-      return jsonResponse({
-        tree: {},
-        mother_dir: "Google Drive (BookScans/)"
-      });
+      try {
+        const scriptUrl = `${webhookUrl}?action=tree&folder_id=${encodeURIComponent(folderId)}`;
+        const res = await fetch(scriptUrl, { method: "GET" });
+        const data = await res.json();
+        return jsonResponse({
+          tree: (data && data.tree) ? data.tree : {},
+          mother_dir: "Google Drive (BookScans/)"
+        });
+      } catch (err) {
+        return jsonResponse({
+          tree: {},
+          mother_dir: "Google Drive (BookScans/)",
+          warning: err.message
+        });
+      }
     }
 
-    // API: Pages
+    // API: Pages (list pages inside a Google Drive Subject/Book folder)
     if (path === "/api/pages") {
       const subject = url.searchParams.get("subject") || "General";
       const book = url.searchParams.get("book") || "Book_Scans";
-      return jsonResponse({
-        subject,
-        book,
-        pages: [],
-        total: 0
-      });
+      try {
+        const scriptUrl = `${webhookUrl}?action=pages&subject=${encodeURIComponent(subject)}&book=${encodeURIComponent(book)}&folder_id=${encodeURIComponent(folderId)}`;
+        const res = await fetch(scriptUrl, { method: "GET" });
+        const data = await res.json();
+        return jsonResponse({
+          subject,
+          book,
+          pages: (data && data.pages) ? data.pages : [],
+          next_page: (data && data.next_page) ? data.next_page : 1,
+          total: (data && data.total) ? data.total : 0
+        });
+      } catch (err) {
+        return jsonResponse({
+          subject,
+          book,
+          pages: [],
+          next_page: 1,
+          total: 0,
+          warning: err.message
+        });
+      }
+    }
+
+    // API: Proxy private Google Drive file preview image
+    if (path === "/api/image") {
+      const fileId = url.searchParams.get("id");
+      if (!fileId) return new Response("Missing id", { status: 400 });
+      try {
+        const scriptUrl = `${webhookUrl}?action=image_b64&id=${encodeURIComponent(fileId)}`;
+        const res = await fetch(scriptUrl, { method: "GET" });
+        const data = await res.json();
+        if (!data || !data.success || !data.base64) {
+          return new Response("Image not found", { status: 404 });
+        }
+        const binStr = atob(data.base64);
+        const bytes = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) {
+          bytes[i] = binStr.charCodeAt(i);
+        }
+        return new Response(bytes, {
+          headers: {
+            "Content-Type": data.mime_type || "image/jpeg",
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*"
+          }
+        });
+      } catch (err) {
+        return new Response("Error loading image", { status: 500 });
+      }
     }
 
     // API: Upload (Images & PDFs directly to Google Drive via Apps Script Webhook)
     if (path === "/api/upload" && request.method === "POST") {
       try {
-        const webhookUrl = (env && env.GDRIVE_WEBHOOK_URL) || "https://script.google.com/macros/s/AKfycby8Klzd5e0vimyKh61uC3URsGvgIkQR3hukjIId_WosyGuoqWj4cW4bB3VPVeIG6iIb/exec";
-        const folderId = (env && env.GDRIVE_FOLDER_ID) || "";
-
         const subject = url.searchParams.get("subject") || "General";
         const book = url.searchParams.get("book") || "Book_Scans";
         const clientPage = parseInt(url.searchParams.get("client_page") || "1", 10);
@@ -116,13 +187,3 @@ export default {
     return new Response("Not Found", { status: 404 });
   }
 };
-
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*"
-    }
-  });
-}

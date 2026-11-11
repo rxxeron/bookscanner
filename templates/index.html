@@ -438,7 +438,7 @@
         <div class="brand-icon">📖</div>
         <div>
           <div class="brand-title">Instant Book Scanner</div>
-          <div class="brand-sub">Direct Live Camera → Laptop Storage</div>
+          <div class="brand-sub" id="brandSub">Direct Live Camera → Google Drive</div>
         </div>
       </div>
       <div class="badge-ip" id="badgeIp">Connecting...</div>
@@ -598,6 +598,7 @@
     let waitingForPageTurn = false;
     let nextExpectedPage = 1;
     let localSessionPages = [];
+    let lastServerPages = [];
 
     // Fast 32x24 luminance fingerprint to detect page turns
     function getFingerprint(source) {
@@ -730,13 +731,18 @@
     }
 
     async function refreshFolders() {
-      const res = await fetch('/api/folders');
-      const data = await res.json();
-      folderTree = data.tree || {};
-
       const selectSubj = document.getElementById('selectSubject');
+      selectSubj.innerHTML = '<option value="__NEW__">⏳ Syncing folders from Drive...</option>';
+      try {
+        const res = await fetch('/api/folders');
+        const data = await res.json();
+        folderTree = data.tree || {};
+      } catch (e) {
+        folderTree = {};
+      }
+
       selectSubj.innerHTML = '<option value="__NEW__">➕ New Subject...</option>';
-      const subjects = Object.keys(folderTree);
+      const subjects = Object.keys(folderTree).sort((a, b) => a.localeCompare(b));
       if (subjects.length > 0) {
         subjects.forEach(s => {
           const opt = document.createElement('option');
@@ -810,21 +816,41 @@
       const card = document.getElementById('existingFoldersCard');
       const list = document.getElementById('folderList');
       list.innerHTML = '';
-      const subjects = Object.keys(folderTree);
+      const subjects = Object.keys(folderTree).sort((a, b) => a.localeCompare(b));
       if (subjects.length === 0) { card.style.display = 'none'; return; }
       card.style.display = 'block';
 
       subjects.forEach(s => {
-        (folderTree[s] || []).forEach(b => {
+        const books = folderTree[s] || [];
+        if (books.length === 0) {
           const item = document.createElement('div');
           item.style.cssText = 'background:#090d16; border:1px solid #233554; border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;';
-          item.innerHTML = `
-            <div>
-              <div style="font-weight:600; font-size:13px; color:#fff;">${s} / ${b.name}</div>
-              <div style="font-size:10px; color:#94a3b8;">${b.pages} pages</div>
-            </div>
-            <button class="btn-switch" onclick="selectAndStart('${s}', '${b.name}')">Open</button>
-          `;
+          const info = document.createElement('div');
+          info.innerHTML = `<div style="font-weight:600; font-size:13px; color:#fff;">📚 ${s}</div><div style="font-size:10px; color:#94a3b8;">Empty Subject folder</div>`;
+          const btn = document.createElement('button');
+          btn.className = 'btn-switch';
+          btn.textContent = 'Select';
+          btn.onclick = () => {
+            document.getElementById('selectSubject').value = s;
+            onSubjectChange();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          };
+          item.appendChild(info);
+          item.appendChild(btn);
+          list.appendChild(item);
+          return;
+        }
+        books.forEach(b => {
+          const item = document.createElement('div');
+          item.style.cssText = 'background:#090d16; border:1px solid #233554; border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;';
+          const info = document.createElement('div');
+          info.innerHTML = `<div style="font-weight:600; font-size:13px; color:#fff;">${s} / ${b.name}</div><div style="font-size:10px; color:#94a3b8;">${b.pages} pages</div>`;
+          const btn = document.createElement('button');
+          btn.className = 'btn-switch';
+          btn.textContent = 'Open';
+          btn.onclick = () => selectAndStart(s, b.name);
+          item.appendChild(info);
+          item.appendChild(btn);
           list.appendChild(item);
         });
       });
@@ -1286,20 +1312,18 @@
         const res = await fetch(`/api/pages?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}`);
         const data = await res.json();
         const pages = data.pages || [];
+        lastServerPages = pages;
+
         const savedPage = parseInt(localStorage.getItem(`scanner_page_${currentSubject}_${currentBook}`) || '0', 10);
-        if (pages.length > 0) {
-          nextExpectedPage = Math.max(pages.length + 1, savedPage);
-        } else if (savedPage > 0) {
-          nextExpectedPage = savedPage;
-        } else {
-          nextExpectedPage = 1;
-        }
+        const serverNext = data.next_page || (pages.length > 0 ? Math.max(...pages.map(p => p.page_number || 0)) + 1 : 1);
+        nextExpectedPage = Math.max(serverNext, savedPage || 1);
+
         localStorage.setItem(`scanner_page_${currentSubject}_${currentBook}`, nextExpectedPage);
         const pagePill = document.getElementById('vfPagePill');
         if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage} ✏️`;
 
-        document.getElementById('activePagesCount').textContent = `${Math.max(pages.length, nextExpectedPage - 1)} pages in session`;
         const displayPages = pages.length > 0 ? pages : localSessionPages;
+        document.getElementById('activePagesCount').textContent = `${Math.max(displayPages.length, nextExpectedPage - 1)} pages in book`;
         document.getElementById('stripCount').textContent = displayPages.length;
 
         const strip = document.getElementById('galleryStrip');
@@ -1312,7 +1336,7 @@
         displayPages.forEach(p => {
           const thumb = document.createElement('div');
           thumb.className = 'gallery-thumb';
-          const imgUrl = p.previewUrl || `/images/${encodeURIComponent(currentSubject)}/${encodeURIComponent(currentBook)}/${p.filename}`;
+          const imgUrl = p.previewUrl || (p.file_id ? `/api/image?id=${encodeURIComponent(p.file_id)}` : `/images/${encodeURIComponent(currentSubject)}/${encodeURIComponent(currentBook)}/${p.filename}`);
           thumb.innerHTML = `
             <img src="${imgUrl}" alt="P.${p.page_number}" loading="lazy">
             <span class="gallery-thumb-tag">P.${p.page_number}</span>
@@ -1326,8 +1350,9 @@
 
     async function exportBookPdf() {
       if (serverInfo && serverInfo.cloud === 'cloudflare_workers') {
-        if (localSessionPages.length === 0) {
-          alert('No scanned pages in the current session to export to PDF.');
+        const exportSource = lastServerPages.length >= localSessionPages.length ? lastServerPages : localSessionPages;
+        if (exportSource.length === 0) {
+          alert('No scanned pages found to export to PDF.');
           return;
         }
         if (typeof PDFLib === 'undefined') {
@@ -1335,10 +1360,17 @@
           return;
         }
         try {
-          showToast('success', '📄 Compiling PDF...', false);
+          showToast('success', `📄 Compiling ${exportSource.length} pages to PDF...`, false);
           const pdfDoc = await PDFLib.PDFDocument.create();
-          for (const item of localSessionPages) {
-            const jpgBytes = await item.blob.arrayBuffer();
+          for (const item of exportSource) {
+            let jpgBytes;
+            if (item.blob) {
+              jpgBytes = await item.blob.arrayBuffer();
+            } else if (item.file_id) {
+              const imgRes = await fetch(`/api/image?id=${encodeURIComponent(item.file_id)}`);
+              jpgBytes = await imgRes.arrayBuffer();
+            }
+            if (!jpgBytes) continue;
             const jpgImage = await pdfDoc.embedJpg(jpgBytes);
             const page = pdfDoc.addPage([jpgImage.width, jpgImage.height]);
             page.drawImage(jpgImage, { x: 0, y: 0, width: jpgImage.width, height: jpgImage.height });
@@ -1362,7 +1394,7 @@
           });
           const upData = await upRes.json();
           if (upData.success) {
-            alert(`✅ PDF Compiled & Synced to Google Drive!\nFile: ${pdfFilename} (${localSessionPages.length} pages)`);
+            alert(`✅ PDF Compiled & Synced to Google Drive!\nFile: ${pdfFilename} (${exportSource.length} pages)`);
           } else {
             alert(`✅ PDF Downloaded locally, but Google Drive sync reported: ${upData.error || 'unknown error'}`);
           }

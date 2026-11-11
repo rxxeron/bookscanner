@@ -31,6 +31,7 @@ CERT_FILE = BASE_DIR / "cert.pem"
 KEY_FILE = BASE_DIR / "key.pem"
 
 # Google Drive Webhook Integration (via Google Apps Script or Cloud endpoint)
+DEFAULT_WEBHOOK = "https://script.google.com/macros/s/AKfycby8Klzd5e0vimyKh61uC3URsGvgIkQR3hukjIId_WosyGuoqWj4cW4bB3VPVeIG6iIb/exec"
 GDRIVE_WEBHOOK_URL = os.environ.get("GDRIVE_WEBHOOK_URL", "").strip()
 GDRIVE_CONFIG_FILE = BASE_DIR / "config.json"
 if not GDRIVE_WEBHOOK_URL and GDRIVE_CONFIG_FILE.exists():
@@ -39,6 +40,8 @@ if not GDRIVE_WEBHOOK_URL and GDRIVE_CONFIG_FILE.exists():
         GDRIVE_WEBHOOK_URL = _cfg.get("gdrive_webhook_url", "").strip()
     except Exception:
         pass
+if not GDRIVE_WEBHOOK_URL:
+    GDRIVE_WEBHOOK_URL = DEFAULT_WEBHOOK
 
 # Dedicated Mother Folder inside Prep404
 # Automatically resolves Prep404 / BookScans relative to this script or defaults to Prep404 directory

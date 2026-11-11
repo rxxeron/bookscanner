@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Local Book Scanner</title>
+  <title>Book Scanner</title>
   <script src="/static/qrcode.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js" defer></script>
   <style>
     :root {
       --bg: #090d16;
@@ -596,6 +597,7 @@
     let autoSnapCooldownUntil = 0;
     let waitingForPageTurn = false;
     let nextExpectedPage = 1;
+    let localSessionPages = [];
 
     // Fast 32x24 luminance fingerprint to detect page turns
     function getFingerprint(source) {
@@ -856,6 +858,7 @@
       localStorage.removeItem('scanner_in_session');
       currentSubject = "";
       currentBook = "";
+      localSessionPages = [];
       refreshFolders();
       document.getElementById('screenScanner').classList.remove('active');
       document.getElementById('screenPicker').classList.add('active');
@@ -1193,6 +1196,12 @@
           playChime(true);
           vibrate(70);
           showToast('success', `✅ Page ${data.page_number} Saved & Synced!`, false);
+          localSessionPages.push({
+            page_number: data.page_number,
+            filename: data.filename || `page_${String(data.page_number).padStart(3, '0')}.jpg`,
+            blob: blob,
+            previewUrl: URL.createObjectURL(blob)
+          });
           nextExpectedPage = data.page_number + 1;
           localStorage.setItem(`scanner_page_${currentSubject}_${currentBook}`, nextExpectedPage);
           const pagePill = document.getElementById('vfPagePill');
@@ -1290,19 +1299,20 @@
         if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage} ✏️`;
 
         document.getElementById('activePagesCount').textContent = `${Math.max(pages.length, nextExpectedPage - 1)} pages in session`;
-        document.getElementById('stripCount').textContent = pages.length;
+        const displayPages = pages.length > 0 ? pages : localSessionPages;
+        document.getElementById('stripCount').textContent = displayPages.length;
 
         const strip = document.getElementById('galleryStrip');
-        if (pages.length === 0) {
+        if (displayPages.length === 0) {
           strip.innerHTML = '<div style="font-size:11px; color:var(--text-muted); padding:10px;">Scanned pages will appear here.</div>';
           return;
         }
 
         strip.innerHTML = '';
-        pages.forEach(p => {
+        displayPages.forEach(p => {
           const thumb = document.createElement('div');
           thumb.className = 'gallery-thumb';
-          const imgUrl = `/images/${encodeURIComponent(currentSubject)}/${encodeURIComponent(currentBook)}/${p.filename}`;
+          const imgUrl = p.previewUrl || `/images/${encodeURIComponent(currentSubject)}/${encodeURIComponent(currentBook)}/${p.filename}`;
           thumb.innerHTML = `
             <img src="${imgUrl}" alt="P.${p.page_number}" loading="lazy">
             <span class="gallery-thumb-tag">P.${p.page_number}</span>
@@ -1315,11 +1325,58 @@
     }
 
     async function exportBookPdf() {
+      if (serverInfo && serverInfo.cloud === 'cloudflare_workers') {
+        if (localSessionPages.length === 0) {
+          alert('No scanned pages in the current session to export to PDF.');
+          return;
+        }
+        if (typeof PDFLib === 'undefined') {
+          alert('PDF library is still loading. Please try again in 2 seconds.');
+          return;
+        }
+        try {
+          showToast('success', '📄 Compiling PDF...', false);
+          const pdfDoc = await PDFLib.PDFDocument.create();
+          for (const item of localSessionPages) {
+            const jpgBytes = await item.blob.arrayBuffer();
+            const jpgImage = await pdfDoc.embedJpg(jpgBytes);
+            const page = pdfDoc.addPage([jpgImage.width, jpgImage.height]);
+            page.drawImage(jpgImage, { x: 0, y: 0, width: jpgImage.width, height: jpgImage.height });
+          }
+          const pdfBytes = await pdfDoc.save();
+          const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+          const pdfFilename = `${currentBook}.pdf`;
+
+          // Download locally
+          const dlLink = document.createElement('a');
+          dlLink.href = URL.createObjectURL(pdfBlob);
+          dlLink.download = pdfFilename;
+          dlLink.click();
+
+          // Upload directly to Google Drive
+          const uploadUrl = `/api/upload?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}&filename=${encodeURIComponent(pdfFilename)}&mime_type=application/pdf`;
+          const upRes = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/pdf' },
+            body: pdfBlob
+          });
+          const upData = await upRes.json();
+          if (upData.success) {
+            alert(`✅ PDF Compiled & Synced to Google Drive!\nFile: ${pdfFilename} (${localSessionPages.length} pages)`);
+          } else {
+            alert(`✅ PDF Downloaded locally, but Google Drive sync reported: ${upData.error || 'unknown error'}`);
+          }
+        } catch (err) {
+          alert('PDF compilation error: ' + err.message);
+        }
+        return;
+      }
+
       try {
         const res = await fetch(`/api/export_pdf?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}`, { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-          alert(`✅ PDF Saved to Laptop!\nFile: ${data.pdf_filename}\nLocation: ${data.file_path}`);
+          alert(`✅ PDF Saved!\nFile: ${data.pdf_filename}\nLocation: ${data.file_path}`);
         } else {
           alert('Export error: ' + data.error);
         }

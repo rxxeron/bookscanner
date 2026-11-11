@@ -7,3 +7,5 @@ config.json
 scanned_books/
 BookScans/
 .env
+.wrangler/
+node_modules/

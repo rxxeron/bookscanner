@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Local Book Scanner</title>
+  <script src="/static/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #131d31;
+      --card-border: #233554;
+      --primary: #3b82f6;
+      --primary-glow: rgba(59, 130, 246, 0.4);
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.15);
+      --danger: #ef4444;
+      --danger-bg: rgba(239, 68, 68, 0.15);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px;
+    }
+    .container {
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      font-size: 22px;
+      background: rgba(59, 130, 246, 0.15);
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+    }
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .badge-ip {
+      font-size: 11px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+
+    /* Cards & Containers */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #e2e8f0;
+    }
+
+    /* Form Fields */
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .input-box {
+      background: #090d16;
+      border: 1px solid #233554;
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: #fff;
+      font-size: 14px;
+      width: 100%;
+      outline: none;
+    }
+    .input-box:focus {
+      border-color: var(--primary);
+    }
+    .path-preview {
+      background: #060911;
+      border: 1px dashed #233554;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 11px;
+      color: #38bdf8;
+      word-break: break-all;
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+
+    /* Screens */
+    .screen {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+    }
+    .screen.active {
+      display: flex;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 16px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      width: 100%;
+      transition: all 0.15s ease;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn-primary:active {
+      transform: scale(0.97);
+    }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+    }
+    .btn-switch {
+      background: #233554;
+      color: #f1f5f9;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* LIVE CAMERA VIEWFINDER (Zero App Switching) */
+    .viewfinder-card {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+      border: 2px solid #233554;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      aspect-ratio: 3/4;
+      max-height: 58vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #cameraVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .scan-reticle {
+      position: absolute;
+      top: 6%;
+      left: 6%;
+      right: 6%;
+      bottom: 6%;
+      border: 2px dashed rgba(59, 130, 246, 0.4);
+      border-radius: 14px;
+      pointer-events: none;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
+      transition: border-color 0.2s;
+    }
+    .scan-reticle.sharp {
+      border-color: #10b981;
+      border-style: solid;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.4), 0 0 0 9999px rgba(0, 0, 0, 0.2);
+    }
+    .scan-reticle.blurry {
+      border-color: #ef4444;
+      border-style: dashed;
+    }
+
+    /* Flash and Progress Overlay */
+    .flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease-out;
+      z-index: 5;
+    }
+    .flash-overlay.flashing {
+      opacity: 0.85;
+      transition: none;
+    }
+    .snap-progress-bar {
+      position: absolute;
+      bottom: 20px;
+      left: 15%;
+      right: 15%;
+      height: 7px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      overflow: hidden;
+      display: none;
+      z-index: 8;
+    }
+    .snap-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+      border-radius: 6px;
+      transition: width 0.08s linear;
+    }
+
+    /* Viewfinder Top Controls */
+    .vf-top-bar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+    .page-pill {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .sharpness-pill {
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .torch-btn {
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    /* Giant In-Page Capture Button */
+    .capture-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 10px 0;
+    }
+    .capture-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      border: 4px solid #fff;
+      box-shadow: 0 0 24px var(--primary-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #fff;
+      transition: transform 0.1s ease;
+    }
+    .capture-btn:active {
+      transform: scale(0.9);
+    }
+    .capture-btn svg {
+      width: 34px;
+      height: 34px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+    }
+    .auto-snap-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      border-radius: 20px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .auto-snap-btn.active {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: #10b981;
+      color: #34d399;
+    }
+
+    /* Result Toast Notification */
+    .status-toast {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 10;
+      backdrop-filter: blur(10px);
+    }
+    .status-toast.success {
+      background: rgba(16, 185, 129, 0.9);
+      color: #fff;
+      display: flex;
+    }
+    .status-toast.blurry {
+      background: rgba(239, 68, 68, 0.9);
+      color: #fff;
+      display: flex;
+    }
+
+    /* Scanned Mini Gallery */
+    .gallery-strip {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 4px 0;
+    }
+    .gallery-thumb {
+      flex: 0 0 65px;
+      height: 85px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #334155;
+      position: relative;
+    }
+    .gallery-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .gallery-thumb-tag {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <div class="brand">
+        <div class="brand-icon">📖</div>
+        <div>
+          <div class="brand-title">Instant Book Scanner</div>
+          <div class="brand-sub">Direct Live Camera → Laptop Storage</div>
+        </div>
+      </div>
+      <div class="badge-ip" id="badgeIp">Connecting...</div>
+    </div>
+
+    <!-- HTTPS Notice for In-Browser Camera -->
+    <div id="httpsNotice" style="display:none; background:#1e1b4b; border:1px solid #6366f1; border-radius:12px; padding:12px; font-size:12px; line-height:1.4;">
+      <div style="font-weight:700; color:#a5b4fc; margin-bottom:4px;">🔒 Switch to HTTPS for In-Browser Camera</div>
+      <div style="color:#cbd5e1; margin-bottom:8px;">To scan directly on this page without opening the external camera app, switch to HTTPS:</div>
+      <a id="httpsLink" href="#" class="btn btn-primary" style="padding:8px 12px; font-size:12px; width:auto; display:inline-flex;">
+        ⚡ Open in HTTPS Mode (Recommended)
+      </a>
+    </div>
+
+    <!-- Desktop QR Connect Box -->
+    <div class="card" id="desktopQrBox" style="display:none; text-align:center; align-items:center; flex-direction:column; gap:10px;">
+      <div style="font-weight:700; font-size:15px; color:#93c5fd;">📱 Connect Phone via Wi-Fi</div>
+      <div style="font-size:12px; color:var(--text-muted);">Scan this QR to open the live scanner directly on your phone:</div>
+      <div id="qrcode" style="background:#fff; padding:10px; border-radius:12px;"></div>
+      <div style="font-size:15px; font-weight:700; color:#38bdf8;" id="qrUrlText">https://...</div>
+    </div>
+
+    <!-- SCREEN 1: FOLDER DESTINATION PICKER -->
+    <div class="screen active" id="screenPicker">
+      <div class="card">
+        <div class="card-title">📁 Select Target Folder</div>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+          Mother Folder: <b style="color:#fff;" id="motherDirDisplay">D:\BookScans</b>
+        </p>
+
+        <div class="field-group">
+          <label class="field-label">Subject / Topic</label>
+          <select class="input-box" id="selectSubject" onchange="onSubjectChange()">
+            <option value="__NEW__">➕ New Subject...</option>
+          </select>
+          <input type="text" class="input-box" id="inputNewSubject" placeholder="e.g. Physics, Math, Past Questions" style="display:none; margin-top:6px;" oninput="updatePathPreview()">
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Book / Chapter Name</label>
+          <select class="input-box" id="selectBook" onchange="onBookChange()">
+            <option value="__NEW__">➕ New Book...</option>
+          </select>
+          <input type="text" class="input-box" id="inputNewBook" placeholder="e.g. Chapter 4, Test Paper 2024" style="display:none; margin-top:6px;" oninput="updatePathPreview()">
+        </div>
+
+        <div class="field-label" style="margin-bottom:4px;">Files will save directly to:</div>
+        <div class="path-preview" id="pathPreview">Loading path...</div>
+
+        <button class="btn btn-primary" onclick="startScanSession()" style="font-size:15px;">
+          🚀 Start Instant Scanning
+        </button>
+      </div>
+
+      <div class="card" id="existingFoldersCard" style="display:none;">
+        <div class="card-title">📚 Existing Books in Storage</div>
+        <div id="folderList" style="display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
+    </div>
+
+    <!-- SCREEN 2: IN-PAGE LIVE CAMERA SCANNER -->
+    <div class="screen" id="screenScanner">
+
+      <!-- Session Bar -->
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#131d31; border:1px solid #233554; border-radius:12px; padding:10px 14px;">
+        <div>
+          <div style="font-weight:700; font-size:14px; color:#fff;" id="activeSubjBook">Physics / Ch 1</div>
+          <div style="font-size:11px; color:#38bdf8;" id="activePagesCount">0 pages scanned</div>
+        </div>
+        <button class="btn-switch" onclick="switchFolder()">⇄ Switch Folder</button>
+      </div>
+
+      <!-- Live Camera Viewfinder -->
+      <div class="viewfinder-card" id="vfCard">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+        <div class="scan-reticle" id="reticle"></div>
+        <div class="flash-overlay" id="flashOverlay"></div>
+        <div class="snap-progress-bar" id="snapProgressBar">
+          <div class="snap-progress-fill" id="snapProgressFill"></div>
+        </div>
+
+        <!-- Viewfinder Overlay Controls -->
+        <div class="vf-top-bar">
+          <div class="page-pill" id="vfPagePill">📄 Next: Page 1</div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div class="sharpness-pill" id="sharpnessPill">
+              <span id="sharpDot" style="width:8px; height:8px; border-radius:50%; background:#94a3b8;"></span>
+              <span id="sharpScoreText">Analyzing...</span>
+            </div>
+            <button class="torch-btn" id="torchBtn" onclick="toggleTorch()" style="display:none;">🔦</button>
+          </div>
+        </div>
+
+        <!-- In-viewfinder Toast -->
+        <div class="status-toast" id="vfToast">
+          <span id="vfToastMsg">Page Saved</span>
+          <button id="vfForceSaveBtn" style="display:none; background:#fff; color:#ef4444; border:none; border-radius:4px; padding:3px 8px; font-size:10px; font-weight:bold;" onclick="forceSaveCurrentFrame()">Force Save</button>
+        </div>
+      </div>
+
+      <!-- Giant Shutter & Auto-Snap Bar -->
+      <div class="capture-bar">
+        <button class="auto-snap-btn" id="autoSnapBtn" onclick="toggleAutoSnap()">
+          ⚡ Auto-Snap: OFF
+        </button>
+
+        <div class="capture-btn" id="btnCapture" onclick="captureCurrentFrame()">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9"></circle>
+          </svg>
+        </div>
+
+        <button class="btn-switch" id="speedBtn" onclick="toggleSnapSpeed()" style="padding:6px 10px; font-size:11px; font-weight:700; color:#38bdf8;">
+          ⚡ Turbo (0.2s)
+        </button>
+      </div>
+
+      <!-- Scanned Pages Mini Strip -->
+      <div class="card" style="padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div style="font-size:13px; font-weight:700;">📖 Scanned Pages (<span id="stripCount">0</span>)</div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-switch" onclick="exportBookPdf()">📄 Export PDF</button>
+            <button class="btn-switch" onclick="openFolderInExplorer()">📂 Laptop</button>
+          </div>
+        </div>
+        <div class="gallery-strip" id="galleryStrip">
+          <div style="font-size:11px; color:var(--text-muted); padding:10px;">Scanned pages will appear here.</div>
+        </div>
+      </div>
+
+      <!-- Off-screen processing canvas -->
+      <canvas id="procCanvas" style="display:none;"></canvas>
+      <input type="file" id="fallbackFileInput" accept="image/*" capture="environment" style="display:none;" onchange="handleFallbackFile(this.files[0])">
+    </div>
+
+  </div>
+
+  <script>
+    let serverInfo = null;
+    let folderTree = {};
+    let currentSubject = "";
+    let currentBook = "";
+    let currentThreshold = 120;
+    let videoStream = null;
+    let autoSnapEnabled = false;
+    let autoSnapTimer = null;
+    let liveAnalysisInterval = null;
+    let isTorchOn = false;
+    let videoTrack = null;
+    let lastCapturedBlob = null;
+    let isCapturing = false;
+    let lastCapturedFingerprint = null;
+    let prevFrameFp = null;
+    let motionObservedSinceSnap = false;
+    let autoSnapCooldownUntil = 0;
+    let waitingForPageTurn = false;
+    let nextExpectedPage = 1;
+
+    // Fast 32x24 luminance fingerprint to detect page turns
+    function getFingerprint(source) {
+      const fc = document.createElement('canvas');
+      fc.width = 32; fc.height = 24;
+      const fctx = fc.getContext('2d', { willReadFrequently: true });
+      fctx.drawImage(source, 0, 0, 32, 24);
+      const d = fctx.getImageData(0, 0, 32, 24).data;
+      const g = new Uint8Array(32 * 24);
+      for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+        g[j] = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
+      }
+      return g;
+    }
+
+    function calculateDiff(fp1, fp2) {
+      if (!fp1 || !fp2) return 1.0;
+      let d = 0;
+      for (let i = 0; i < fp1.length; i++) {
+        d += Math.abs(fp1[i] - fp2[i]);
+      }
+      return d / (fp1.length * 255);
+    }
+
+    function triggerFlash() {
+      const flash = document.getElementById('flashOverlay');
+      if (flash) {
+        flash.classList.add('flashing');
+        setTimeout(() => flash.classList.remove('flashing'), 120);
+      }
+    }
+
+    function setProgressBar(pct) {
+      const bar = document.getElementById('snapProgressBar');
+      const fill = document.getElementById('snapProgressFill');
+      if (!bar || !fill) return;
+      if (pct > 0 && autoSnapEnabled) {
+        bar.style.display = 'block';
+        fill.style.width = Math.min(100, Math.max(0, pct)) + '%';
+      } else {
+        bar.style.display = 'none';
+        fill.style.width = '0%';
+      }
+    }
+
+    // Fast synthesized Web Audio chime (0 external assets)
+    function playChime(isSuccess) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        if (isSuccess) {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(659.25, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+          gain.gain.setValueAtTime(0.2, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.2);
+        } else {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(200, ctx.currentTime);
+          gain.gain.setValueAtTime(0.2, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.25);
+        }
+      } catch (e) {}
+    }
+
+    function vibrate(pattern) {
+      if (navigator.vibrate) navigator.vibrate(pattern);
+    }
+
+    async function init() {
+      try {
+        const res = await fetch('/api/status');
+        serverInfo = await res.json();
+        if (serverInfo.gdrive_connected) {
+          document.getElementById('badgeIp').textContent = (window.location.protocol === 'https:' ? '🔒 HTTPS' : 'HTTP') + ' • ☁️ Drive Synced';
+          document.getElementById('badgeIp').style.background = 'rgba(59, 130, 246, 0.2)';
+          document.getElementById('badgeIp').style.color = '#60a5fa';
+          document.getElementById('badgeIp').style.borderColor = 'rgba(59, 130, 246, 0.4)';
+        } else {
+          document.getElementById('badgeIp').textContent = (window.location.protocol === 'https:' ? '🔒 HTTPS' : 'HTTP') + ' • ' + serverInfo.local_ip;
+        }
+        document.getElementById('motherDirDisplay').textContent = serverInfo.mother_dir;
+
+        // If on HTTP, show link to HTTPS for camera access
+        if (window.location.protocol === 'http:' && (window.location.hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname))) {
+          const httpsNotice = document.getElementById('httpsNotice');
+          if (httpsNotice && serverInfo.https_url) {
+            httpsNotice.style.display = 'block';
+            document.getElementById('httpsLink').href = serverInfo.https_url;
+          }
+        }
+
+        // Render QR Code on desktop
+        const isDesktop = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isDesktop && typeof QRCode !== 'undefined') {
+          const qrBox = document.getElementById('desktopQrBox');
+          qrBox.style.display = 'flex';
+          const targetUrl = serverInfo.https_url || serverInfo.http_url;
+          document.getElementById('qrUrlText').textContent = targetUrl;
+          new QRCode(document.getElementById("qrcode"), {
+            text: targetUrl,
+            width: 130,
+            height: 130
+          });
+        }
+
+        await refreshFolders();
+
+        // Auto-resume active scan session if user refreshed while scanning
+        const inSession = localStorage.getItem('scanner_in_session');
+        const lastSubj = localStorage.getItem('scanner_subject');
+        const lastBk = localStorage.getItem('scanner_book');
+        if (inSession === 'true' && lastSubj && lastBk) {
+          currentSubject = lastSubj;
+          currentBook = lastBk;
+          await startScanSession();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function refreshFolders() {
+      const res = await fetch('/api/folders');
+      const data = await res.json();
+      folderTree = data.tree || {};
+
+      const selectSubj = document.getElementById('selectSubject');
+      selectSubj.innerHTML = '<option value="__NEW__">➕ New Subject...</option>';
+      const subjects = Object.keys(folderTree);
+      if (subjects.length > 0) {
+        subjects.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = '📚 ' + s;
+          selectSubj.appendChild(opt);
+        });
+        selectSubj.value = subjects[0];
+      } else {
+        selectSubj.value = '__NEW__';
+      }
+      onSubjectChange();
+      renderExistingList();
+    }
+
+    function onSubjectChange() {
+      const sel = document.getElementById('selectSubject');
+      const inp = document.getElementById('inputNewSubject');
+      const selBook = document.getElementById('selectBook');
+      const inpBook = document.getElementById('inputNewBook');
+
+      if (sel.value === '__NEW__') {
+        inp.style.display = 'block';
+        inp.focus();
+        selBook.innerHTML = '<option value="__NEW__">➕ New Book...</option>';
+        inpBook.style.display = 'block';
+      } else {
+        inp.style.display = 'none';
+        const books = folderTree[sel.value] || [];
+        selBook.innerHTML = '<option value="__NEW__">➕ New Book...</option>';
+        if (books.length > 0) {
+          books.forEach(b => {
+            const opt = document.createElement('option');
+            opt.value = b.name;
+            opt.textContent = `📖 ${b.name} (${b.pages} p)`;
+            selBook.appendChild(opt);
+          });
+          selBook.value = books[0].name;
+          inpBook.style.display = 'none';
+        } else {
+          selBook.value = '__NEW__';
+          inpBook.style.display = 'block';
+        }
+      }
+      onBookChange();
+    }
+
+    function onBookChange() {
+      const sel = document.getElementById('selectBook');
+      const inp = document.getElementById('inputNewBook');
+      inp.style.display = sel.value === '__NEW__' ? 'block' : 'none';
+      updatePathPreview();
+    }
+
+    function getSubj() {
+      const sel = document.getElementById('selectSubject');
+      return sel.value === '__NEW__' ? (document.getElementById('inputNewSubject').value.trim() || 'General') : sel.value;
+    }
+
+    function getBk() {
+      const sel = document.getElementById('selectBook');
+      return sel.value === '__NEW__' ? (document.getElementById('inputNewBook').value.trim() || 'Book_Scans') : sel.value;
+    }
+
+    function updatePathPreview() {
+      const mother = serverInfo ? serverInfo.mother_dir : 'D:\\BookScans';
+      document.getElementById('pathPreview').textContent = `${mother} \\ ${getSubj()} \\ ${getBk()} \\`;
+    }
+
+    function renderExistingList() {
+      const card = document.getElementById('existingFoldersCard');
+      const list = document.getElementById('folderList');
+      list.innerHTML = '';
+      const subjects = Object.keys(folderTree);
+      if (subjects.length === 0) { card.style.display = 'none'; return; }
+      card.style.display = 'block';
+
+      subjects.forEach(s => {
+        (folderTree[s] || []).forEach(b => {
+          const item = document.createElement('div');
+          item.style.cssText = 'background:#090d16; border:1px solid #233554; border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;';
+          item.innerHTML = `
+            <div>
+              <div style="font-weight:600; font-size:13px; color:#fff;">${s} / ${b.name}</div>
+              <div style="font-size:10px; color:#94a3b8;">${b.pages} pages</div>
+            </div>
+            <button class="btn-switch" onclick="selectAndStart('${s}', '${b.name}')">Open</button>
+          `;
+          list.appendChild(item);
+        });
+      });
+    }
+
+    function selectAndStart(s, b) {
+      currentSubject = s;
+      currentBook = b;
+      startScanSession();
+    }
+
+    async function startScanSession() {
+      currentSubject = currentSubject || getSubj();
+      currentBook = currentBook || getBk();
+      document.getElementById('activeSubjBook').textContent = `${currentSubject} / ${currentBook}`;
+
+      // Persist active session so page refresh keeps your place
+      localStorage.setItem('scanner_subject', currentSubject);
+      localStorage.setItem('scanner_book', currentBook);
+      localStorage.setItem('scanner_in_session', 'true');
+
+      document.getElementById('screenPicker').classList.remove('active');
+      document.getElementById('screenScanner').classList.add('active');
+
+      loadBookPages();
+      await startCameraStream();
+    }
+
+    function switchFolder() {
+      stopCameraStream();
+      localStorage.removeItem('scanner_in_session');
+      currentSubject = "";
+      currentBook = "";
+      refreshFolders();
+      document.getElementById('screenScanner').classList.remove('active');
+      document.getElementById('screenPicker').classList.add('active');
+    }
+
+    // START IN-BROWSER EMBEDDED CAMERA (Self-healing on refresh)
+    async function startCameraStream(isRetry = false) {
+      stopCameraStream();
+      const video = document.getElementById('cameraVideo');
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      video.setAttribute('muted', '');
+
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('In-browser camera requires HTTPS or secure context.');
+        }
+
+        let constraints = {
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        };
+
+        if (isRetry) {
+          constraints = {
+            audio: false,
+            video: { facingMode: { ideal: "environment" } }
+          };
+        }
+
+        videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = videoStream;
+
+        try {
+          await video.play();
+        } catch (playErr) {
+          // Autoplay blocked by mobile browser policy on refresh - tap to play
+          const resume = async () => {
+            try { await video.play(); } catch(e) {}
+            window.removeEventListener('touchstart', resume);
+            window.removeEventListener('click', resume);
+          };
+          window.addEventListener('touchstart', resume, { once: true });
+          window.addEventListener('click', resume, { once: true });
+        }
+
+        videoTrack = videoStream.getVideoTracks()[0];
+        const caps = videoTrack && videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+        if (caps.torch) {
+          document.getElementById('torchBtn').style.display = 'flex';
+        }
+
+        const vfCard = document.getElementById('vfCard');
+        vfCard.onclick = (e) => {
+          if (e.target.id === 'torchBtn') return;
+          if (waitingForPageTurn) {
+            waitingForPageTurn = false;
+            motionObservedSinceSnap = false;
+            steadySharpCount = 0;
+            showToast('success', `Ready for Page ${nextExpectedPage}`, false);
+          }
+        };
+
+        startLiveAnalysis();
+      } catch (err) {
+        console.warn('Camera stream error:', err);
+        if (!isRetry) {
+          // Give hardware 350ms to release previous camera handle and retry
+          setTimeout(() => startCameraStream(true), 350);
+          return;
+        }
+
+        const sharpText = document.getElementById('sharpScoreText');
+        sharpText.innerHTML = '🔄 <u style="cursor:pointer;" onclick="startCameraStream(true)">Camera Paused - Tap to Start</u>';
+        const vfCard = document.getElementById('vfCard');
+        vfCard.onclick = (e) => {
+          if (e.target.id === 'torchBtn') return;
+          startCameraStream(true);
+        };
+      }
+    }
+
+    function stopCameraStream() {
+      if (liveAnalysisInterval) {
+        clearInterval(liveAnalysisInterval);
+        liveAnalysisInterval = null;
+      }
+      if (videoStream) {
+        videoStream.getTracks().forEach(t => {
+          try { t.stop(); } catch(e) {}
+        });
+        videoStream = null;
+      }
+      const video = document.getElementById('cameraVideo');
+      if (video) {
+        video.srcObject = null;
+      }
+    }
+
+    // Hardware release on tab close / refresh
+    window.addEventListener('beforeunload', stopCameraStream);
+    window.addEventListener('pagehide', stopCameraStream);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        stopCameraStream();
+      } else if (document.visibilityState === 'visible' && document.getElementById('screenScanner').classList.contains('active')) {
+        setTimeout(() => startCameraStream(), 200);
+      }
+    });
+
+    async function toggleTorch() {
+      if (!videoTrack) return;
+      try {
+        isTorchOn = !isTorchOn;
+        await videoTrack.applyConstraints({ advanced: [{ torch: isTorchOn }] });
+        document.getElementById('torchBtn').style.background = isTorchOn ? 'rgba(234, 179, 8, 0.8)' : 'rgba(0,0,0,0.75)';
+      } catch (e) {}
+    }
+
+    // Fast client-side Laplacian variance blur metric (<15ms)
+    function computeCanvasBlurScore(canvas) {
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const w = canvas.width;
+      const h = canvas.height;
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+
+      // Extract luminance
+      const gray = new Uint8Array(w * h);
+      for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+        gray[j] = (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
+      }
+
+      // Laplacian variance with step=2 for instant computation
+      let sum = 0, sumSq = 0, count = 0;
+      for (let y = 2; y < h - 2; y += 2) {
+        const row = y * w;
+        for (let x = 2; x < w - 2; x += 2) {
+          const idx = row + x;
+          const lap = gray[idx - w] + gray[idx + w] + gray[idx - 1] + gray[idx + 1] - (gray[idx] << 2) + 128;
+          sum += lap;
+          sumSq += lap * lap;
+          count++;
+        }
+      }
+      const mean = sum / count;
+      return Math.round((sumSq / count) - (mean * mean));
+    }
+
+    // Live sharpness monitor
+    let steadySharpCount = 0;
+    function startLiveAnalysis() {
+      const video = document.getElementById('cameraVideo');
+      const reticle = document.getElementById('reticle');
+      const sharpPill = document.getElementById('sharpnessPill');
+      const sharpDot = document.getElementById('sharpDot');
+      const sharpText = document.getElementById('sharpScoreText');
+
+      const smCanvas = document.createElement('canvas');
+      smCanvas.width = 320;
+      smCanvas.height = 240;
+      const smCtx = smCanvas.getContext('2d', { willReadFrequently: true });
+
+      liveAnalysisInterval = setInterval(() => {
+        if (!video.videoWidth || isCapturing) return;
+
+        smCtx.drawImage(video, 0, 0, smCanvas.width, smCanvas.height);
+        const score = computeCanvasBlurScore(smCanvas);
+        const isSharp = score >= currentThreshold;
+        const now = Date.now();
+        const curFp = getFingerprint(smCanvas);
+
+        // Track frame-to-frame motion
+        let frameMotion = 0;
+        if (prevFrameFp) {
+          frameMotion = calculateDiff(prevFrameFp, curFp);
+        }
+        prevFrameFp = curFp;
+
+        if (autoSnapEnabled) {
+          if (waitingForPageTurn) {
+            if (frameMotion > 0.035) {
+              motionObservedSinceSnap = true;
+            }
+
+            const diffFromSaved = calculateDiff(lastCapturedFingerprint, curFp);
+
+            // Page turn detected when:
+            // 1. Scene changed (>1.8% luminance shift) or motion observed
+            // 2. Motion settled (frameMotion < 0.08)
+            // 3. Cooldown (400ms) has passed
+            const hasSceneChanged = motionObservedSinceSnap || diffFromSaved > 0.018;
+            const isMotionSettled = frameMotion < 0.08;
+
+            if (hasSceneChanged && isMotionSettled && now > autoSnapCooldownUntil) {
+              waitingForPageTurn = false;
+              motionObservedSinceSnap = false;
+              steadySharpCount = 0;
+              sharpDot.style.background = '#f59e0b';
+              sharpText.textContent = `📖 Page ${nextExpectedPage} clear! Hold steady...`;
+            } else {
+              sharpDot.style.background = motionObservedSinceSnap ? '#f59e0b' : '#38bdf8';
+              sharpText.textContent = motionObservedSinceSnap ? `📖 Flipping to Page ${nextExpectedPage}...` : `📖 Turn to Page ${nextExpectedPage}...`;
+              reticle.className = 'scan-reticle';
+              setProgressBar(0);
+              return;
+            }
+          }
+        }
+
+        if (isSharp) {
+          reticle.className = 'scan-reticle sharp';
+          sharpDot.style.background = '#10b981';
+          steadySharpCount++;
+
+          if (autoSnapEnabled && !waitingForPageTurn) {
+            // Rapid snap: 2 ticks (200ms hold)
+            const targetTicks = snapSpeedTicks || 2;
+            const pct = Math.min(100, Math.round((steadySharpCount / targetTicks) * 100));
+            setProgressBar(pct);
+            sharpText.textContent = `Target locked! (${pct}%) 🎯`;
+
+            // Snap after 200ms steady hold
+            if (steadySharpCount >= targetTicks && now > autoSnapCooldownUntil) {
+              steadySharpCount = 0;
+              setProgressBar(100);
+              triggerFlash();
+              captureCurrentFrame();
+            }
+          } else {
+            sharpText.textContent = `Sharp: ${score} ✅`;
+            setProgressBar(0);
+          }
+          sharpPill.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        } else {
+          reticle.className = 'scan-reticle blurry';
+          sharpDot.style.background = '#ef4444';
+          sharpText.textContent = `Score: ${score} (Hold still)`;
+          sharpPill.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+          steadySharpCount = Math.max(0, steadySharpCount - 1);
+          setProgressBar(0);
+        }
+      }, 100);
+    }
+
+    function toggleAutoSnap() {
+      autoSnapEnabled = !autoSnapEnabled;
+      waitingForPageTurn = false;
+      motionObservedSinceSnap = false;
+      steadySharpCount = 0;
+      setProgressBar(0);
+      const btn = document.getElementById('autoSnapBtn');
+      if (autoSnapEnabled) {
+        btn.classList.add('active');
+        btn.textContent = '⚡ Auto-Snap: ON';
+      } else {
+        btn.classList.remove('active');
+        btn.textContent = '⚡ Auto-Snap: OFF';
+      }
+    }
+
+    // CAPTURE FRAME INSTANTLY (0.15s Turnaround)
+    async function captureCurrentFrame() {
+      if (isCapturing) return;
+      isCapturing = true;
+
+      const video = document.getElementById('cameraVideo');
+      const canvas = document.getElementById('procCanvas');
+
+      if (!video.videoWidth) {
+        document.getElementById('fallbackFileInput').click();
+        isCapturing = false;
+        return;
+      }
+
+      // Max 2200px long edge for ultra-fast Wi-Fi upload & razor sharp book text
+      let w = video.videoWidth;
+      let h = video.videoHeight;
+      const maxDim = 2200;
+      if (Math.max(w, h) > maxDim) {
+        const s = maxDim / Math.max(w, h);
+        w = Math.round(w * s);
+        h = Math.round(h * s);
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+
+      // Verify sharpness on high-res canvas
+      const score = computeCanvasBlurScore(canvas);
+
+      if (score < currentThreshold) {
+        // REJECT BLURRY SHOT INSTANTLY
+        playChime(false);
+        vibrate([100, 50, 100]);
+        showToast('blurry', `⚠️ Blurry! (Score ${score} < ${currentThreshold})`, true);
+        isCapturing = false;
+        return;
+      }
+
+      // PASSED! Record page fingerprint so Auto-Snap will not repeat this page
+      lastCapturedFingerprint = getFingerprint(canvas);
+      waitingForPageTurn = true;
+      motionObservedSinceSnap = false;
+      autoSnapCooldownUntil = Date.now() + 400; // 0.4s fast cooldown
+      steadySharpCount = 0;
+      setProgressBar(0);
+
+      // Export compressed JPEG blob (~300KB) in 20ms
+      canvas.toBlob(async (blob) => {
+        lastCapturedBlob = blob;
+        await uploadImageBlob(blob, score, false);
+        isCapturing = false;
+      }, 'image/jpeg', 0.88);
+    }
+
+    async function uploadImageBlob(blob, score, force) {
+      try {
+        const url = `/api/upload?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}&threshold=${currentThreshold}&client_score=${score}&force=${force}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/jpeg' },
+          body: blob
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          playChime(true);
+          vibrate(70);
+          showToast('success', `✅ Page ${data.page_number} Stored on Laptop!`, false);
+          nextExpectedPage = data.page_number + 1;
+          const pagePill = document.getElementById('vfPagePill');
+          if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage}`;
+          loadBookPages();
+        } else {
+          playChime(false);
+          showToast('blurry', `⚠️ ${data.message}`, true);
+        }
+      } catch (err) {
+        showToast('blurry', 'Upload failed: ' + err.message, false);
+      }
+    }
+
+    async function forceSaveCurrentFrame() {
+      if (!lastCapturedBlob) return;
+      await uploadImageBlob(lastCapturedBlob, currentThreshold, true);
+    }
+
+    function showToast(type, msg, showForceBtn) {
+      const toast = document.getElementById('vfToast');
+      const text = document.getElementById('vfToastMsg');
+      const fBtn = document.getElementById('vfForceSaveBtn');
+
+      toast.className = 'status-toast ' + type;
+      text.textContent = msg;
+      fBtn.style.display = showForceBtn ? 'block' : 'none';
+
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 2500);
+    }
+
+    // Fallback file picker for plain HTTP (Port 5000)
+    function handleFallbackFile(file) {
+      if (!file) return;
+      showToast('success', '⚡ Processing & verifying blur...', false);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.getElementById('procCanvas');
+        let w = img.width, h = img.height;
+        const maxDim = 2200;
+        if (Math.max(w, h) > maxDim) {
+          const s = maxDim / Math.max(w, h);
+          w = Math.round(w * s); h = Math.round(h * s);
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const score = computeCanvasBlurScore(canvas);
+
+        if (score < currentThreshold) {
+          playChime(false);
+          vibrate([100, 50, 100]);
+          showToast('blurry', `⚠️ Too Blurry! (Score ${score} < ${currentThreshold})`, true);
+          return;
+        }
+
+        canvas.toBlob(blob => {
+          lastCapturedBlob = blob;
+          uploadImageBlob(blob, score, false);
+        }, 'image/jpeg', 0.88);
+      };
+      img.src = URL.createObjectURL(file);
+    }
+
+    // Load book pages list
+    async function loadBookPages() {
+      try {
+        const res = await fetch(`/api/pages?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}`);
+        const data = await res.json();
+        const pages = data.pages || [];
+        nextExpectedPage = pages.length + 1;
+        const pagePill = document.getElementById('vfPagePill');
+        if (pagePill) pagePill.textContent = `📄 Next: Page ${nextExpectedPage}`;
+
+        document.getElementById('activePagesCount').textContent = `${pages.length} pages scanned`;
+        document.getElementById('stripCount').textContent = pages.length;
+
+        const strip = document.getElementById('galleryStrip');
+        if (pages.length === 0) {
+          strip.innerHTML = '<div style="font-size:11px; color:var(--text-muted); padding:10px;">Scanned pages will appear here.</div>';
+          return;
+        }
+
+        strip.innerHTML = '';
+        pages.forEach(p => {
+          const thumb = document.createElement('div');
+          thumb.className = 'gallery-thumb';
+          const imgUrl = `/images/${encodeURIComponent(currentSubject)}/${encodeURIComponent(currentBook)}/${p.filename}`;
+          thumb.innerHTML = `
+            <img src="${imgUrl}" alt="P.${p.page_number}" loading="lazy">
+            <span class="gallery-thumb-tag">P.${p.page_number}</span>
+          `;
+          strip.appendChild(thumb);
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function exportBookPdf() {
+      try {
+        const res = await fetch(`/api/export_pdf?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          alert(`✅ PDF Saved to Laptop!\nFile: ${data.pdf_filename}\nLocation: ${data.file_path}`);
+        } else {
+          alert('Export error: ' + data.error);
+        }
+      } catch (err) { alert(err.message); }
+    }
+
+    async function openFolderInExplorer() {
+      try {
+        await fetch(`/api/open_folder?subject=${encodeURIComponent(currentSubject)}&book=${encodeURIComponent(currentBook)}`, { method: 'POST' });
+      } catch (e) {}
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

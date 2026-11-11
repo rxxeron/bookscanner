@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*$py.class
+cert.pem
+key.pem
+config.json
+scanned_books/
+BookScans/
+.env

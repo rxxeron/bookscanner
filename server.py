@@ -33,11 +33,15 @@ KEY_FILE = BASE_DIR / "key.pem"
 # Google Drive Webhook Integration (via Google Apps Script or Cloud endpoint)
 DEFAULT_WEBHOOK = "https://script.google.com/macros/s/AKfycby8Klzd5e0vimyKh61uC3URsGvgIkQR3hukjIId_WosyGuoqWj4cW4bB3VPVeIG6iIb/exec"
 GDRIVE_WEBHOOK_URL = os.environ.get("GDRIVE_WEBHOOK_URL", "").strip()
+GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID", "").strip()
 GDRIVE_CONFIG_FILE = BASE_DIR / "config.json"
-if not GDRIVE_WEBHOOK_URL and GDRIVE_CONFIG_FILE.exists():
+if GDRIVE_CONFIG_FILE.exists():
     try:
         _cfg = json.loads(GDRIVE_CONFIG_FILE.read_text(encoding='utf-8'))
-        GDRIVE_WEBHOOK_URL = _cfg.get("gdrive_webhook_url", "").strip()
+        if not GDRIVE_WEBHOOK_URL:
+            GDRIVE_WEBHOOK_URL = _cfg.get("gdrive_webhook_url", "").strip()
+        if not GDRIVE_FOLDER_ID:
+            GDRIVE_FOLDER_ID = _cfg.get("gdrive_folder_id", "").strip()
     except Exception:
         pass
 if not GDRIVE_WEBHOOK_URL:
@@ -137,7 +141,8 @@ def upload_to_gdrive(subject, book, filename, file_bytes, mime_type="image/jpeg"
             "book": book,
             "filename": filename,
             "mime_type": mime_type,
-            "image_base64": b64_data
+            "image_base64": b64_data,
+            "folder_id": GDRIVE_FOLDER_ID
         }
         res = requests.post(GDRIVE_WEBHOOK_URL, json=payload, timeout=60)
         if res.status_code == 200:

@@ -49,10 +49,16 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 1. Resolve Root Destination Folder
+    // 1. Resolve Root Destination Folder (accepts folder_id from scanner, or ROOT_FOLDER_ID, or defaults to BookScans)
+    var targetFolderId = (data.folder_id || ROOT_FOLDER_ID || "").trim();
     var parentFolder;
-    if (ROOT_FOLDER_ID && ROOT_FOLDER_ID.length > 5) {
-      parentFolder = DriveApp.getFolderById(ROOT_FOLDER_ID);
+    if (targetFolderId && targetFolderId.length > 5) {
+      try {
+        parentFolder = DriveApp.getFolderById(targetFolderId);
+      } catch (err) {
+        var rootIter = DriveApp.getRootFolder().getFoldersByName("BookScans");
+        parentFolder = rootIter.hasNext() ? rootIter.next() : DriveApp.getRootFolder().createFolder("BookScans");
+      }
     } else {
       var rootIter = DriveApp.getRootFolder().getFoldersByName("BookScans");
       parentFolder = rootIter.hasNext() ? rootIter.next() : DriveApp.getRootFolder().createFolder("BookScans");
